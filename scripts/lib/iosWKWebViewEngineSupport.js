@@ -102,8 +102,24 @@ function loadProjectFile_cordova_5_and_6() {
   return platformIos.parseProjectFile(iosPlatformPath);
 }
 
+/**
+ * Resolve pbxproj path for cordova-ios (supports legacy <name>.xcodeproj and cordova-ios 7+/8 App.xcodeproj).
+ */
+function resolvePbxPath() {
+  var candidates = [
+    path.join(iosPlatformPath, projectName + '.xcodeproj', 'project.pbxproj'),
+    path.join(iosPlatformPath, 'App.xcodeproj', 'project.pbxproj')
+  ];
+  for (var i = 0; i < candidates.length; i++) {
+    if (fs.existsSync(candidates[i])) {
+      return candidates[i];
+    }
+  }
+  throw new Error('project.pbxproj not found under platforms/ios');
+}
+
 function loadProjectFile_cordova_9_and_above() {
-  var pbxPath = path.join(iosPlatformPath, projectName + '.xcodeproj', 'project.pbxproj');
+  var pbxPath = resolvePbxPath();
   var xcodeproj = require('xcode').project(pbxPath);
   xcodeproj.parseSync();
 
@@ -118,23 +134,8 @@ function loadProjectFile_cordova_9_and_above() {
 }
 
 function loadProjectFile_cordova_7_and_8() {
-  var pbxPath = path.join(iosPlatformPath, projectName + '.xcodeproj', 'project.pbxproj');
+  var pbxPath = resolvePbxPath();
   var xcodeproj = context.requireCordovaModule('xcode').project(pbxPath);
-  xcodeproj.parseSync();
-
-  var saveProj = function() {
-    fs.writeFileSync(pbxPath, xcodeproj.writeSync());
-  };
-
-  return {
-    xcode: xcodeproj,
-    write: saveProj
-  };
-}
-
-function loadProjectFile_cordova_9_and_above() {
-  var pbxPath = path.join(iosPlatformPath, projectName + '.xcodeproj', 'project.pbxproj');
-  var xcodeproj = require('xcode').project(pbxPath);
   xcodeproj.parseSync();
 
   var saveProj = function() {
