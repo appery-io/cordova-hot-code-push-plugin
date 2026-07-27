@@ -5,19 +5,20 @@
 //
 
 #import "HCPAppUpdateRequestAlertDialog.h"
+#import <UIKit/UIKit.h>
 
-@interface HCPAppUpdateRequestAlertDialog()<UIAlertViewDelegate> {
+@interface HCPAppUpdateRequestAlertDialog() {
     NSString *_message;
     NSString *_storeUrl;
-    void (^_onSuccess)();
-    void (^_onFailure)();
+    void (^_onSuccess)(void);
+    void (^_onFailure)(void);
 }
 
 @end
 
 @implementation HCPAppUpdateRequestAlertDialog
 
-- (instancetype)initWithMessage:(NSString *)message storeUrl:(NSString *)storeUrl onSuccessBlock:(void (^)())onSuccess onFailureBlock:(void (^)())onFailure {
+- (instancetype)initWithMessage:(NSString *)message storeUrl:(NSString *)storeUrl onSuccessBlock:(void (^)(void))onSuccess onFailureBlock:(void (^)(void))onFailure {
     self = [super init];
     if (self) {
         _message = message;
@@ -33,18 +34,38 @@
     NSString *positiveButtonTitle = NSLocalizedString(@"OK", @"");
     NSString *negativeButtontitle = NSLocalizedString(@"Cancel", @"");
 
-    UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:@"" message:_message delegate:self cancelButtonTitle:positiveButtonTitle otherButtonTitles:negativeButtontitle, nil];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@""
+                                                                   message:_message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
 
-    [alertView show];
-}
+    __weak typeof(self) weakSelf = self;
+    [alert addAction:[UIAlertAction actionWithTitle:positiveButtonTitle
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(__unused UIAlertAction *action) {
+        if (_onSuccess) {
+            _onSuccess();
+        }
+        NSURL *url = [NSURL URLWithString:_storeUrl];
+        if (url) {
+            [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+        }
+        (void)weakSelf;
+    }]];
 
-- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
-    if (buttonIndex == alertView.cancelButtonIndex) {
-        _onSuccess();
-        [[UIApplication sharedApplication] openURL:[NSURL URLWithString:_storeUrl]];
-    } else {
-        _onFailure();
+    [alert addAction:[UIAlertAction actionWithTitle:negativeButtontitle
+                                              style:UIAlertActionStyleCancel
+                                            handler:^(__unused UIAlertAction *action) {
+        if (_onFailure) {
+            _onFailure();
+        }
+        (void)weakSelf;
+    }]];
+
+    UIViewController *root = UIApplication.sharedApplication.keyWindow.rootViewController;
+    while (root.presentedViewController) {
+        root = root.presentedViewController;
     }
+    [root presentViewController:alert animated:YES completion:nil];
 }
 
 @end
