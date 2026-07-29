@@ -4,6 +4,7 @@
 //  Created by Nikolay Demyankov on 13.08.15.
 //
 
+#import <Foundation/Foundation.h>
 #import "HCPPluginInternalPreferences+UserDefaults.h"
 
 static NSString *const PLUGIN_CONFIG_USER_DEFAULTS_KEY = @"plugin_config";

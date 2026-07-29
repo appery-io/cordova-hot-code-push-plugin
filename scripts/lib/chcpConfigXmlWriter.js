@@ -72,8 +72,18 @@ function getProjectName(ctx, projectRoot) {
  */
 function pathToIosConfigXml() {
   var projectName = getProjectName(cordovaContext, projectRoot);
-
-  return path.join(projectRoot, 'platforms', 'ios', projectName, 'config.xml');
+  var candidates = [
+    path.join(projectRoot, 'platforms', 'ios', 'App', 'config.xml'),
+    path.join(projectRoot, 'platforms', 'ios', projectName, 'config.xml'),
+    path.join(projectRoot, 'platforms', 'ios', 'config.xml')
+  ];
+  var fs = require('fs');
+  for (var i = 0; i < candidates.length; i++) {
+    if (fs.existsSync(candidates[i])) {
+      return candidates[i];
+    }
+  }
+  return candidates[0];
 }
 
 /**

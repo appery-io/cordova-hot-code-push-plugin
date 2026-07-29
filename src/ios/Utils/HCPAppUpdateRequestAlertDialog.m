@@ -61,7 +61,16 @@
         (void)weakSelf;
     }]];
 
-    UIViewController *root = UIApplication.sharedApplication.keyWindow.rootViewController;
+    UIWindow *window = nil;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+                if (w.isKeyWindow) { window = w; break; }
+            }
+        }
+        if (window != nil) break;
+    }
+    UIViewController *root = window.rootViewController;
     while (root.presentedViewController) {
         root = root.presentedViewController;
     }

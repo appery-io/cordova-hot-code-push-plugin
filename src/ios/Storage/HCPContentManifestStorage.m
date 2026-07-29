@@ -4,6 +4,7 @@
 //  Created by Nikolay Demyankov on 12.08.15.
 //
 
+#import <Foundation/Foundation.h>
 #import "HCPContentManifestStorage.h"
 #import "HCPContentManifest.h"
 
