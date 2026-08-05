@@ -1,5 +1,12 @@
 # Change Log
 
+## 1.6.13 (2026-08-05)
+
+**Bug fixes:**
+
+- iOS white screen with Ionic WebView: do not point Cordova `wwwFolderName` at a `file://` HCP path (that became `ionic://localhost/var/mobile/...` → 404). On cold start only set IONAssetHandler’s asset path before Cordova `loadStartPage`; do not issue a second `ionic://localhost` load (WKWebView then stayed blank). Post-update reload uses a cache-busting query.
+- iOS WKWebView category: never append absolute filesystem paths onto `scheme://localhost` when remapping file URLs.
+
 ## 1.6.12 (2026-08-05)
 
 **Bug fixes:**

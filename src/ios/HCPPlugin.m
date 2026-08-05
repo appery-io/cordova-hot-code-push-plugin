@@ -5,6 +5,7 @@
 //
 
 #import <Cordova/CDVConfigParser.h>
+#import <WebKit/WebKit.h>
 
 #import "HCPPlugin.h"
 #import "HCPFileDownloader.h"
@@ -64,6 +65,7 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
     _isPluginReadyForWork = YES;
     [self resetIndexPageToExternalStorage];
     [self loadApplicationConfig];
+
     
     // install update if any exists
     if (_pluginXmlConfig.isUpdatesAutoInstallationAllowed &&
@@ -245,63 +247,126 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
 }
 
 /**
+ *  Point Ionic WebView IONAssetHandler at the HCP www folder (Android setServerBasePath).
+ *  Returns YES if Ionic handler was updated.
+ */
+- (BOOL)setIonicAssetPathToCurrentWww {
+    NSString *wwwPath = _filesStructure.wwwFolder.path;
+    if (wwwPath.length == 0) {
+        return NO;
+    }
+
+    id engine = self.webViewEngine;
+    if (!engine) {
+        return NO;
+    }
+
+    @try {
+        [(NSObject *)engine setValue:wwwPath forKey:@"basePath"];
+    } @catch (NSException *e) {}
+
+    id handler = nil;
+    @try {
+        handler = [(NSObject *)engine valueForKey:@"handler"];
+    } @catch (NSException *e) {}
+
+    if (!handler) {
+        NSString *scheme = @"ionic";
+        NSString *local = nil;
+        @try {
+            local = [(NSObject *)engine valueForKey:@"CDV_LOCAL_SERVER"];
+        } @catch (NSException *e) {}
+        if ([local containsString:@"://"]) {
+            scheme = [local componentsSeparatedByString:@"://"].firstObject;
+        }
+        WKWebView *wk = nil;
+        @try {
+            wk = (WKWebView *)[(NSObject *)engine valueForKey:@"engineWebView"];
+        } @catch (NSException *e) {}
+        if ([wk isKindOfClass:[WKWebView class]]) {
+            handler = [[wk configuration] urlSchemeHandlerForURLScheme:scheme];
+            if (!handler) {
+                handler = [[wk configuration] urlSchemeHandlerForURLScheme:@"ionic"];
+            }
+            if (!handler) {
+                handler = [[wk configuration] urlSchemeHandlerForURLScheme:@"app"];
+            }
+        }
+    }
+
+    SEL setAssetPathSel = NSSelectorFromString(@"setAssetPath:");
+    if (handler && [handler respondsToSelector:setAssetPathSel]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        [handler performSelector:setAssetPathSel withObject:wwwPath];
+#pragma clang diagnostic pop
+        NSLog(@"CHCP: Ionic asset path set to %@", wwwPath);
+        return YES;
+    }
+    return NO;
+}
+
+/**
  *  Point Ionic WebView (or WKWebView) at the current HCP www folder and load index.
+ *
+ *  With cordova-plugin-ionic-webview we must NOT switch Cordova's webContentFolderName
+ *  to a file:// URL. That made the engine request ionic://localhost/var/mobile/... (404).
+ *  Mirror Android setServerBasePath: change IONAssetHandler base path and load scheme://localhost.
+ *
+ *  Reload uses a cache-busting query so WKWebView does not ignore a duplicate ionic://localhost load.
  */
 - (void)loadURL:(NSString *)url {
     [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-        NSString *wwwPath = self->_filesStructure.wwwFolder.path;
         NSString *wwwAbsolute = self->_filesStructure.wwwFolder.absoluteString;
-        // Rewrite Cordova starting page location for subsequent navigations
-        if ([self.viewController isKindOfClass:[CDVViewController class]]) {
-            CDVViewController *vc = (CDVViewController *)self.viewController;
-            if ([vc respondsToSelector:@selector(setWebContentFolderName:)]) {
-                [vc setValue:wwwAbsolute forKey:@"webContentFolderName"];
-            } else {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-                vc.wwwFolderName = wwwAbsolute;
-#pragma clang diagnostic pop
-            }
-        }
 
-        // Prefer Ionic WebView setServerBasePath semantics: asset root = www, load scheme://localhost/
+        BOOL ionicReady = [self setIonicAssetPathToCurrentWww];
         id<CDVWebViewEngineProtocol> engine = self.webViewEngine;
         BOOL redirected = NO;
-        if (engine) {
-            @try {
-                [(NSObject *)engine setValue:wwwPath forKey:@"basePath"];
-            } @catch (NSException *e) {}
 
-            id handler = nil;
-            @try {
-                handler = [(NSObject *)engine valueForKey:@"handler"];
-            } @catch (NSException *e) {}
-            SEL setAssetPathSel = NSSelectorFromString(@"setAssetPath:");
-            if (handler && [handler respondsToSelector:setAssetPathSel]) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-                [handler performSelector:setAssetPathSel withObject:wwwPath];
-#pragma clang diagnostic pop
-            }
-
+        if (ionicReady && engine) {
             NSString *localServer = nil;
             @try {
                 localServer = [(NSObject *)engine valueForKey:@"CDV_LOCAL_SERVER"];
             } @catch (NSException *e) {}
             if (localServer.length > 0) {
-                NSURLRequest *request = [NSURLRequest requestWithURL:[NSURL URLWithString:localServer]
+                NSString *base = [localServer hasSuffix:@"/"] ? [localServer substringToIndex:localServer.length - 1] : localServer;
+                NSString *bustURL = [NSString stringWithFormat:@"%@/?chcp=%llu",
+                                     base,
+                                     (unsigned long long)([[NSDate date] timeIntervalSince1970] * 1000)];
+                NSLog(@"CHCP: Reloading Ionic local server %@", bustURL);
+                WKWebView *wk = nil;
+                @try {
+                    wk = (WKWebView *)[(NSObject *)engine valueForKey:@"engineWebView"];
+                } @catch (NSException *e) {}
+                NSURLRequest *request = [NSURLRequest requestWithURL:[NSURL URLWithString:bustURL]
                                                          cachePolicy:NSURLRequestReloadIgnoringCacheData
                                                      timeoutInterval:10000];
+                if ([wk isKindOfClass:[WKWebView class]]) {
+                    [wk loadRequest:request];
+                } else {
 #ifdef __CORDOVA_4_0_0
-                [engine loadRequest:request];
+                    [engine loadRequest:request];
 #else
-                [self.webView loadRequest:request];
+                    [self.webView loadRequest:request];
 #endif
+                }
                 redirected = YES;
             }
         }
 
         if (!redirected) {
+            // Fallback for non-Ionic engines: load file URL from HCP www
+            if ([self.viewController isKindOfClass:[CDVViewController class]]) {
+                CDVViewController *vc = (CDVViewController *)self.viewController;
+                if ([vc respondsToSelector:@selector(setWebContentFolderName:)]) {
+                    [vc setValue:wwwAbsolute forKey:@"webContentFolderName"];
+                } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                    vc.wwwFolderName = wwwAbsolute;
+#pragma clang diagnostic pop
+                }
+            }
             NSURL *loadURL = [NSURL URLWithString:[NSString stringWithFormat:@"%@/%@", wwwAbsolute, url]];
             NSURLRequest *request = [NSURLRequest requestWithURL:loadURL
                                                      cachePolicy:NSURLRequestReloadIgnoringCacheData
@@ -317,6 +382,9 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
 
 /**
  *  Redirect user to the index page that is located on the external storage.
+ *  Same role as Android redirectToLocalStorageIndexPage() on cold start:
+ *  only retarget Ionic's asset path BEFORE Cordova loadStartPage — do not issue a
+ *  second loadRequest for ionic://localhost (that produced a white screen).
  */
 - (void)resetIndexPageToExternalStorage {
     NSString *indexPageStripped = [self indexPageFromConfigXml];
@@ -328,14 +396,20 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
     
     NSURL *indexPageExternalURL = [self appendWwwFolderPathToPath:indexPageStripped];
     if (![[NSFileManager defaultManager] fileExistsAtPath:indexPageExternalURL.path]) {
+        NSLog(@"CHCP: External starting page not found at %@. Aborting redirect.", indexPageExternalURL.path);
         return;
     }
-    
-    // rewrite starting page www folder path: should load from external storage
-    if ([self.viewController isKindOfClass:[CDVViewController class]]) {
-        ((CDVViewController *)self.viewController).wwwFolderName = _filesStructure.wwwFolder.absoluteString;
-    } else {
-        NSLog(@"HotCodePushError: Can't make starting page to be from external storage. Main controller should be of type CDVViewController.");
+
+    if (![self.viewController isKindOfClass:[CDVViewController class]]) {
+        NSLog(@"HotCodePushError: Can't redirect to external storage. Main controller should be of type CDVViewController.");
+        return;
+    }
+
+    // Sync: Cordova loadStartPage runs right after pluginInitialize and will load
+    // ionic://localhost once — with HCP www already set as the asset root.
+    if (![self setIonicAssetPathToCurrentWww]) {
+        // Non-Ionic fallback: legacy file:// www folder switch + explicit load
+        [self loadURL:[self indexPageFromConfigXml]];
     }
 }
 
@@ -412,6 +486,8 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
     }
     [_defaultCallbackStoredResults removeAllObjects];
 }
+
+
 
 #pragma mark Events
 
