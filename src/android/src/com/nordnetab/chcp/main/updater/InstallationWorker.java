@@ -172,19 +172,42 @@ class InstallationWorker implements WorkerTask {
     }
 
     /**
-     * Copy downloaded files into www folder
+     * Copy downloaded files into www folder.
+     * Never overwrite native-bridge files (cordova.js, cordova_plugins.js, plugins/*)
+     * even if they somehow appear in the download folder.
      *
      * @return <code>true</code> if files are copied; <code>false</code> - otherwise
      */
     private boolean moveFilesFromInstallationFolderToWwwFolder() {
         try {
-            FilesUtility.copy(newReleaseFS.getDownloadFolder(), newReleaseFS.getWwwFolder());
-
+            copyDownloadFolderSkippingNativeBridge(
+                    new File(newReleaseFS.getDownloadFolder()),
+                    new File(newReleaseFS.getWwwFolder()),
+                    "");
             return true;
         } catch (IOException e) {
             e.printStackTrace();
 
             return false;
+        }
+    }
+
+    private void copyDownloadFolderSkippingNativeBridge(File src, File dst, String relativePath) throws IOException {
+        if (src.isDirectory()) {
+            FilesUtility.ensureDirectoryExists(dst);
+            String[] filesList = src.list();
+            if (filesList == null) {
+                return;
+            }
+            for (String file : filesList) {
+                String childRelative = relativePath.isEmpty() ? file : relativePath + "/" + file;
+                copyDownloadFolderSkippingNativeBridge(new File(src, file), new File(dst, file), childRelative);
+            }
+        } else {
+            if (ContentManifest.isNativeBridgeFile(relativePath)) {
+                return;
+            }
+            FilesUtility.copy(src, dst);
         }
     }
 

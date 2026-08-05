@@ -113,8 +113,10 @@ class UpdateLoaderWorker implements WorkerTask {
 
         // find files that were updated
         final ManifestDiff diff = oldManifest.calculateDifference(newContentManifest);
+        // Persist without native-bridge entries so later diffs never replace cordova_plugins.js / plugins/*
+        final ContentManifest manifestToStore = newContentManifest.withoutNativeBridgeFiles();
         if (diff.isEmpty()) {
-            manifestStorage.storeInFolder(newContentManifest, filesStructure.getWwwFolder());
+            manifestStorage.storeInFolder(manifestToStore, filesStructure.getWwwFolder());
             appConfigStorage.storeInFolder(newAppConfig, filesStructure.getWwwFolder());
             setNothingToUpdateResult(newAppConfig);
 
@@ -135,7 +137,7 @@ class UpdateLoaderWorker implements WorkerTask {
         }
 
         // store configs
-        manifestStorage.storeInFolder(newContentManifest, filesStructure.getDownloadFolder());
+        manifestStorage.storeInFolder(manifestToStore, filesStructure.getDownloadFolder());
         appConfigStorage.storeInFolder(newAppConfig, filesStructure.getDownloadFolder());
 
         // notify that we are done

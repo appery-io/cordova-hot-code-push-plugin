@@ -21,16 +21,32 @@
     if (fileName.length == 0) {
         return NO;
     }
-    if ([fileName isEqualToString:@"cordova.js"] || [fileName isEqualToString:@"cordova_plugins.js"]) {
+    NSString *name = [fileName stringByReplacingOccurrencesOfString:@"\\" withString:@"/"];
+    if ([name hasPrefix:@"./"]) {
+        name = [name substringFromIndex:2];
+    }
+    // Keep native cordova bridge + plugin JS from the installed binary.
+    // Do NOT block cordova.<hash>.js — updated index.html references those files.
+    if ([name isEqualToString:@"cordova.js"] || [name isEqualToString:@"cordova_plugins.js"] ||
+        [name isEqualToString:@"cordova.js.map"] || [name isEqualToString:@"cordova_plugins.js.map"]) {
         return YES;
     }
-    if ([fileName hasPrefix:@"plugins/"]) {
-        return YES;
-    }
-    if ([fileName hasPrefix:@"cordova."] && [fileName hasSuffix:@".js"] && [fileName rangeOfString:@"/"].location == NSNotFound) {
+    if ([name hasPrefix:@"plugins/"]) {
         return YES;
     }
     return NO;
+}
+
+- (HCPContentManifest *)manifestWithoutNativeBridgeFiles {
+    NSMutableArray *filtered = [[NSMutableArray alloc] init];
+    for (HCPManifestFile *file in self.files) {
+        if (![HCPContentManifest isNativeBridgeFile:file.name]) {
+            [filtered addObject:file];
+        }
+    }
+    HCPContentManifest *manifest = [[HCPContentManifest alloc] init];
+    manifest.files = filtered;
+    return manifest;
 }
 
 - (HCPManifestDiff *)calculateDifference:(HCPContentManifest *)comparedManifest {

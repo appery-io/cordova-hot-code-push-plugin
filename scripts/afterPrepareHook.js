@@ -188,11 +188,21 @@ function prepareChcpManifest(ctx) {
   process.chdir('www');
   var filelist = walkSync('.');
   filelist.forEach(file => {
-    if (file.endsWith('cordova.js') || file.endsWith('get_target_platform.js') || file.startsWith('plugins/')) {
+    var normalized = file.replace('./', '').replace(/\\/g, '/');
+    // Keep native Cordova bridge out of the local manifest. Hashed cordova.<hash>.js
+    // from server updates is allowed later; local builds typically only have cordova.js.
+    var isNativeBridge =
+      normalized === 'cordova.js' ||
+      normalized === 'cordova_plugins.js' ||
+      normalized === 'cordova.js.map' ||
+      normalized === 'cordova_plugins.js.map' ||
+      normalized === 'get_target_platform.js' ||
+      normalized.startsWith('plugins/');
+    if (isNativeBridge) {
       // Skip file
     } else {
       var item = {};
-      item['file'] = file.replace('./', '');
+      item['file'] = normalized;
       item['hash'] = md5File.sync(file);
       manifest.push(item);
     }

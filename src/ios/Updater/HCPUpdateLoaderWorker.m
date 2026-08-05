@@ -112,7 +112,7 @@
             // compare manifests to find out if anything has changed since the last update
             HCPManifestDiff *manifestDiff = [_oldManifest calculateDifference:newManifest];
             if (manifestDiff.isEmpty) {
-                [_manifestStorage store:newManifest inFolder:_pluginFiles.wwwFolder];
+                [_manifestStorage store:[newManifest manifestWithoutNativeBridgeFiles] inFolder:_pluginFiles.wwwFolder];
                 [_appConfigStorage store:newAppConfig inFolder:_pluginFiles.wwwFolder];
                 [self notifyNothingToUpdate:newAppConfig];
                 return;
@@ -133,7 +133,7 @@
             
             // otherwise - update holds only files for deletion;
             // just save new configs and notify subscribers about success
-            [_manifestStorage store:newManifest inFolder:_pluginFiles.downloadFolder];
+            [_manifestStorage store:[newManifest manifestWithoutNativeBridgeFiles] inFolder:_pluginFiles.downloadFolder];
             [_appConfigStorage store:newAppConfig inFolder:_pluginFiles.downloadFolder];
             
             [self notifyUpdateDownloadSuccess:newAppConfig];
@@ -164,8 +164,8 @@
             return;
         }
                   
-        // store configs
-        [_manifestStorage store:newManifest inFolder:_pluginFiles.downloadFolder];
+        // store configs (strip native-bridge files from persisted manifest)
+        [_manifestStorage store:[newManifest manifestWithoutNativeBridgeFiles] inFolder:_pluginFiles.downloadFolder];
         [_appConfigStorage store:newAppConfig inFolder:_pluginFiles.downloadFolder];
                   
         // notify that we are done

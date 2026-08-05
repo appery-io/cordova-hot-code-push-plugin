@@ -106,22 +106,46 @@ public class ContentManifest {
      * from the published web project, which would wipe Hot Code Push (and other
      * native-only plugins) from the JS bridge after the first update — breaking
      * subsequent fetchUpdate() calls.
+     * <p/>
+     * NOTE: hashed bundles like {@code cordova.&lt;hash&gt;.js} are NOT protected —
+     * updated index.html references them, so they must be downloaded. They still
+     * load the on-device {@code cordova_plugins.js} for the native plugin list.
      */
     public static boolean isNativeBridgeFile(String fileName) {
         if (fileName == null) {
             return false;
         }
-        if ("cordova.js".equals(fileName) || "cordova_plugins.js".equals(fileName)) {
+        // Normalize path separators
+        String name = fileName.replace('\\', '/');
+        if (name.startsWith("./")) {
+            name = name.substring(2);
+        }
+        if ("cordova.js".equals(name) || "cordova_plugins.js".equals(name)) {
             return true;
         }
-        if (fileName.startsWith("plugins/") || fileName.startsWith("plugins\\")) {
+        // Platform cordova.js variants used by some builds
+        if ("cordova.js.map".equals(name) || "cordova_plugins.js.map".equals(name)) {
             return true;
         }
-        // Hashed cordova bundles published by Appery (cordova.<hash>.js)
-        if (fileName.startsWith("cordova.") && fileName.endsWith(".js") && !fileName.contains("/")) {
+        if (name.startsWith("plugins/")) {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Return a copy of this manifest without native-bridge files.
+     * Used when persisting installed manifests so later diffs never try to
+     * delete/replace on-device Cordova plugin JS.
+     */
+    public ContentManifest withoutNativeBridgeFiles() {
+        ContentManifest filtered = new ContentManifest();
+        for (ManifestFile file : files) {
+            if (!isNativeBridgeFile(file.name)) {
+                filtered.files.add(file);
+            }
+        }
+        return filtered;
     }
 
     /**

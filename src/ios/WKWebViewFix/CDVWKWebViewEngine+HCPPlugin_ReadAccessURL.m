@@ -51,37 +51,123 @@
 
 #if FOUND_WK_WEB_VIEW==1
 
+/**
+ * If path is under an HCP release www folder, return that www folder path.
+ * Example: .../cordova-hot-code-push-plugin/2026.08.05-xx/www/index.html → .../www
+ */
+static NSString *HCPWwwFolderFromPath(NSString *path) {
+    if (path.length == 0) {
+        return nil;
+    }
+    NSRange marker = [path rangeOfString:@"/cordova-hot-code-push-plugin/"];
+    if (marker.location == NSNotFound) {
+        return nil;
+    }
+    NSRange wwwRange = [path rangeOfString:@"/www/" options:0 range:NSMakeRange(marker.location, path.length - marker.location)];
+    if (wwwRange.location == NSNotFound) {
+        // exact .../www or .../www/
+        if ([path hasSuffix:@"/www"] || [path hasSuffix:@"/www/"]) {
+            return [path hasSuffix:@"/"] ? [path substringToIndex:path.length - 1] : path;
+        }
+        return nil;
+    }
+    return [path substringToIndex:wwwRange.location + 4]; // include "/www"
+}
+
+- (void)hcp_setIonicAssetPath:(NSString *)wwwPath {
+    if (wwwPath.length == 0) {
+        return;
+    }
+    @try {
+        [self setValue:wwwPath forKey:@"basePath"];
+    } @catch (NSException *e) {}
+
+    NSObject *handler = nil;
+    @try {
+        handler = [self valueForKey:@"handler"];
+    } @catch (NSException *e) {}
+    if (!handler) {
+        NSString *scheme = @"ionic";
+        @try {
+            NSString *local = [self performSelector:@selector(CDV_LOCAL_SERVER)];
+            if ([local containsString:@"://"]) {
+                scheme = [local componentsSeparatedByString:@"://"].firstObject;
+            }
+        } @catch (NSException *e) {}
+        handler = [[((WKWebView*)self.engineWebView) configuration] urlSchemeHandlerForURLScheme:scheme];
+        if (!handler) {
+            handler = [[((WKWebView*)self.engineWebView) configuration] urlSchemeHandlerForURLScheme:@"ionic"];
+        }
+        if (!handler) {
+            handler = [[((WKWebView*)self.engineWebView) configuration] urlSchemeHandlerForURLScheme:@"app"];
+        }
+    }
+    if (handler && [handler respondsToSelector:@selector(setAssetPath:)]) {
+        [handler performSelector:@selector(setAssetPath:) withObject:wwwPath];
+    }
+}
+
 - (id)loadRequest:(NSURLRequest*)request
 {
     if ([self canLoadRequest:request]) { // can load, differentiate between file urls and other schemes
         if (request.URL.fileURL) {
-            NSObject *handler = [[((WKWebView*)self.engineWebView) configuration] urlSchemeHandlerForURLScheme:@"ionic"];
-            if (!handler) {
-                // Prefer preference-configured scheme (iosScheme / scheme), default ionic
-                NSString *scheme = @"ionic";
-                @try {
-                    NSString *local = [self performSelector:@selector(CDV_LOCAL_SERVER)];
-                    if ([local containsString:@"://"]) {
-                        scheme = [local componentsSeparatedByString:@"://"].firstObject;
-                    }
-                } @catch (NSException *e) {}
-                handler = [[((WKWebView*)self.engineWebView) configuration] urlSchemeHandlerForURLScheme:scheme];
-            }
-            if (handler) {
-                NSURL* startURL = [NSURL URLWithString:((CDVViewController *)self.viewController).startPage];
+            NSString *filePath = request.URL.path;
+            NSString *hcpWww = HCPWwwFolderFromPath(filePath);
 
+            NSString *scheme = @"ionic";
+            NSString *localServer = nil;
+            @try {
+                localServer = [self performSelector:@selector(CDV_LOCAL_SERVER)];
+                if ([localServer containsString:@"://"]) {
+                    scheme = [localServer componentsSeparatedByString:@"://"].firstObject;
+                }
+            } @catch (NSException *e) {}
+
+            NSObject *handler = [[((WKWebView*)self.engineWebView) configuration] urlSchemeHandlerForURLScheme:scheme];
+            if (!handler) {
+                handler = [[((WKWebView*)self.engineWebView) configuration] urlSchemeHandlerForURLScheme:@"ionic"];
+            }
+            if (!handler) {
+                handler = [[((WKWebView*)self.engineWebView) configuration] urlSchemeHandlerForURLScheme:@"app"];
+            }
+
+            if (handler) {
+                NSURL *localServerUrl = localServer.length
+                    ? [NSURL URLWithString:localServer]
+                    : [NSURL URLWithString:[NSString stringWithFormat:@"%@://localhost", scheme]];
+
+                if (hcpWww.length > 0) {
+                    // Serve HCP content from the release www folder as ionic/app://localhost/
+                    // so relative scripts and ionic://localhost/cordova.js resolve correctly.
+                    [self hcp_setIonicAssetPath:hcpWww];
+                    NSURL *url = localServerUrl;
+                    if (![filePath isEqualToString:hcpWww] &&
+                        ![filePath isEqualToString:[hcpWww stringByAppendingString:@"/"]] &&
+                        ![filePath hasSuffix:@"/index.html"]) {
+                        NSString *relative = [filePath substringFromIndex:hcpWww.length];
+                        if ([relative hasPrefix:@"/"]) {
+                            relative = [relative substringFromIndex:1];
+                        }
+                        if (relative.length > 0) {
+                            url = [localServerUrl URLByAppendingPathComponent:relative];
+                        }
+                    }
+                    if (request.URL.query) {
+                        url = [NSURL URLWithString:[@"?" stringByAppendingString:request.URL.query] relativeToURL:url];
+                    }
+                    if (request.URL.fragment) {
+                        url = [NSURL URLWithString:[@"#" stringByAppendingString:request.URL.fragment] relativeToURL:url];
+                    }
+                    request = [NSURLRequest requestWithURL:url];
+                    return [(WKWebView*)self.engineWebView loadRequest:request];
+                }
+
+                // Non-HCP file URL (bundle) — keep Ionic default behaviour
+                NSURL* startURL = [NSURL URLWithString:((CDVViewController *)self.viewController).startPage];
                 NSString* startFilePath = [self.commandDelegate pathForResource:[startURL path]];
-                NSURL *localServerUrl = [NSURL URLWithString:[self performSelector:@selector(CDV_LOCAL_SERVER)]];
                 NSURL *url = [localServerUrl URLByAppendingPathComponent:request.URL.path];
                 if ([request.URL.path isEqualToString:startFilePath]) {
-                    url = [NSURL URLWithString:[self performSelector:@selector(CDV_LOCAL_SERVER)]];
-                } else {
-                    NSURL* readAccessUrl = [HCPFilesStructure pluginRootFolder];
-                    if ([request.URL.path containsString:readAccessUrl.path]) {
-                        url = [NSURL URLWithString:[request.URL.path substringFromIndex:readAccessUrl.path.length] relativeToURL:localServerUrl];
-                        if ([handler respondsToSelector:@selector(setAssetPath:)])
-                            [handler performSelector:@selector(setAssetPath:) withObject:readAccessUrl.path];
-                    }
+                    url = localServerUrl;
                 }
                 if(request.URL.query) {
                     url = [NSURL URLWithString:[@"?" stringByAppendingString:request.URL.query] relativeToURL:url];

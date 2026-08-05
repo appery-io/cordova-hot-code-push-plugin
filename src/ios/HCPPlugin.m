@@ -245,21 +245,60 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
 }
 
 /**
- *  Load given url into the WebView
- *
- *  @param url url to load
+ *  Point Ionic WebView (or WKWebView) at the current HCP www folder and load index.
  */
 - (void)loadURL:(NSString *)url {
     [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-        NSURL *loadURL = [NSURL URLWithString:[NSString stringWithFormat:@"%@/%@", _filesStructure.wwwFolder.absoluteString, url]];
-        NSURLRequest *request = [NSURLRequest requestWithURL:loadURL
-                                                 cachePolicy:NSURLRequestReloadIgnoringCacheData
-                                             timeoutInterval:10000];
+        NSString *wwwPath = _filesStructure.wwwFolder.path;
+        // Rewrite Cordova starting page location for subsequent navigations
+        if ([self.viewController isKindOfClass:[CDVViewController class]]) {
+            ((CDVViewController *)self.viewController).wwwFolderName = _filesStructure.wwwFolder.absoluteString;
+        }
+
+        // Prefer Ionic WebView setServerBasePath semantics: asset root = www, load scheme://localhost/
+        id engine = self.webViewEngine;
+        BOOL redirected = NO;
+        if (engine) {
+            @try {
+                [engine setValue:wwwPath forKey:@"basePath"];
+            } @catch (NSException *e) {}
+
+            id handler = nil;
+            @try {
+                handler = [engine valueForKey:@"handler"];
+            } @catch (NSException *e) {}
+            if (handler && [handler respondsToSelector:@selector(setAssetPath:)]) {
+                [handler performSelector:@selector(setAssetPath:) withObject:wwwPath];
+            }
+
+            NSString *localServer = nil;
+            @try {
+                localServer = [engine valueForKey:@"CDV_LOCAL_SERVER"];
+            } @catch (NSException *e) {}
+            if (localServer.length > 0) {
+                NSURLRequest *request = [NSURLRequest requestWithURL:[NSURL URLWithString:localServer]
+                                                         cachePolicy:NSURLRequestReloadIgnoringCacheData
+                                                     timeoutInterval:10000];
 #ifdef __CORDOVA_4_0_0
-        [self.webViewEngine loadRequest:request];
+                [engine loadRequest:request];
 #else
-        [self.webView loadRequest:request];
+                [self.webView loadRequest:request];
 #endif
+                redirected = YES;
+            }
+        }
+
+        if (!redirected) {
+            NSURL *loadURL = [NSURL URLWithString:[NSString stringWithFormat:@"%@/%@", _filesStructure.wwwFolder.absoluteString, url]];
+            NSURLRequest *request = [NSURLRequest requestWithURL:loadURL
+                                                     cachePolicy:NSURLRequestReloadIgnoringCacheData
+                                                 timeoutInterval:10000];
+#ifdef __CORDOVA_4_0_0
+            [self.webViewEngine loadRequest:request];
+#else
+            [self.webView loadRequest:request];
+#endif
+        }
     }];
 }
 

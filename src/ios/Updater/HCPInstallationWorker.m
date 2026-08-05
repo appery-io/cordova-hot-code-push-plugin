@@ -289,7 +289,9 @@
  *  Save loaded configs to the www folder. They are now our current configs.
  */
 - (void)saveNewConfigsToWwwFolder {
-    [_manifestStorage store:_newManifest inFolder:_newReleaseFS.wwwFolder];
+    // Persist manifest without native-bridge entries so later updates never
+    // delete/replace on-device cordova_plugins.js / plugins/* from the binary.
+    [_manifestStorage store:[_newManifest manifestWithoutNativeBridgeFiles] inFolder:_newReleaseFS.wwwFolder];
     [_configStorage store:_newConfig inFolder:_newReleaseFS.wwwFolder];
 }
 

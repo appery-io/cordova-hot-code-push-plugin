@@ -1,5 +1,15 @@
 # Change Log
 
+## 1.6.12 (2026-08-05)
+
+**Bug fixes:**
+
+- Download Appery hashed `cordova.<hash>.js` bundles again. Blocking them left updated `index.html` without a Cordova bootstrap, so plugins broke after the first hot update.
+- Keep protecting only `cordova.js`, `cordova_plugins.js`, and `plugins/*` from the native binary (server manifests omit Hot Code Push and other native-only plugins).
+- Persist installed manifests without native-bridge entries so subsequent updates never delete/replace on-device plugin JS.
+- Android install no longer overlays native-bridge files from the download folder.
+- iOS Ionic WebView now sets the asset/base path to the current HCP `www` folder and loads `scheme://localhost/`, so `cordova.js` and plugins resolve after multiple updates.
+
 ## 1.5.3 (2016-05-27)
 
 **Bug fixes:**

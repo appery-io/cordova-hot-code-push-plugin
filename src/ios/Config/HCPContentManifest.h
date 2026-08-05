@@ -25,6 +25,17 @@
 @property (nonatomic, readonly, strong) NSArray *files;
 
 /**
+ * Files that must remain from the native install (cordova.js, cordova_plugins.js, plugins/*).
+ * Hashed cordova.&lt;hash&gt;.js files are NOT included — they must be downloaded with updates.
+ */
++ (BOOL)isNativeBridgeFile:(NSString *)fileName;
+
+/**
+ * Copy of this manifest without native-bridge files (for persisting installed state).
+ */
+- (HCPContentManifest *)manifestWithoutNativeBridgeFiles;
+
+/**
  * Find differences between this manifest and the new one.
  * Current object is considered as an old manifest.
  *
