@@ -117,7 +117,12 @@ static NSString *const UPDATE_TIME_ON_RESUME = @"resume";
     HCPContentConfig *contentConfig = [[HCPContentConfig alloc] init];
     contentConfig.releaseVersion = jsonObject[RELEASE_VERSION_JSON_KEY];
     contentConfig.minimumNativeVersion = [(NSNumber *)jsonObject[MINIMUM_NATIVE_VERSION_JSON_KEY] integerValue];
-    contentConfig.contentURL = [NSURL URLWithString:jsonObject[CONTENT_URL_JSON_KEY]];
+    NSString *contentUrlString = jsonObject[CONTENT_URL_JSON_KEY];
+    // Appery serves content_url without trailing slash; normalize so relative joins work
+    if ([contentUrlString isKindOfClass:[NSString class]] && contentUrlString.length > 0 && ![contentUrlString hasSuffix:@"/"]) {
+        contentUrlString = [contentUrlString stringByAppendingString:@"/"];
+    }
+    contentConfig.contentURL = [NSURL URLWithString:contentUrlString];
     
     NSString *updateTime = jsonObject[UPDATE_TIME_JSON_KEY];
     contentConfig.updateTime = [contentConfig updateTimeStringToEnum:updateTime];

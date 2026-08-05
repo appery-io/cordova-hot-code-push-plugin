@@ -69,7 +69,8 @@ public class HotCodePushPlugin extends CordovaPlugin {
     private static final String FILE_PREFIX = "file://";
     private static final String WWW_FOLDER = "www";
     private static final String LOCAL_ASSETS_FOLDER = "file:///android_asset/www";
-    private static final String LOCAL_SERVER = "https://localhost";
+    private static final String LOCAL_SERVER_HTTPS = "https://localhost";
+    private static final String LOCAL_SERVER_HTTP = "http://localhost";
 
     private String startingPage;
     private IObjectFileStorage<ApplicationConfig> appConfigStorage;
@@ -596,6 +597,10 @@ public class HotCodePushPlugin extends CordovaPlugin {
             pluginInternalPrefs.setCurrentReleaseVersionName(appConfig.getContentConfig().getReleaseVersion());
 
             pluginInternalPrefsStorage.storeInPreference(pluginInternalPrefs);
+            // After a native binary update, refresh fileStructure so assets are copied into
+            // the new release folder (not the previous HCP release path). See amosbaby fix.
+            fileStructure = new PluginFilesStructure(cordova.getActivity(),
+                    pluginInternalPrefs.getCurrentReleaseVersionName());
         }
 
         AssetsHelper.copyAssetDirectoryToAppDirectory(cordova.getActivity().getApplicationContext(), WWW_FOLDER, fileStructure.getWwwFolder());
@@ -630,7 +635,7 @@ public class HotCodePushPlugin extends CordovaPlugin {
         // load index page from the external source
         external = Paths.get(fileStructure.getWwwFolder(), indexPage);
 
-        // Save new folder as a base path for Ionic Web View
+        // Persist base path for Ionic Web View so updates survive process death
         SharedPreferences prefs = cordova.getContext().getSharedPreferences("WebViewSettings", Activity.MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
         editor.putString("serverBasePath", fileStructure.getWwwFolder());
@@ -638,12 +643,15 @@ public class HotCodePushPlugin extends CordovaPlugin {
 
         if ("IonicWebViewEngine".equals(webView.getEngine().getClass().getSimpleName())) {
             try {
+                // setServerBasePath already hosts files and loads CDV_LOCAL_SERVER —
+                // do NOT call loadUrlIntoView with a hardcoded http://localhost URL
+                // (breaks https / custom schemes and can produce http://localhostindex.html).
                 Method method = webView.getEngine().getClass().getMethod("setServerBasePath", String.class);
                 method.invoke(webView.getEngine(), fileStructure.getWwwFolder());
             } catch (Exception e) {
                 Log.e("CHCP", "Can't set server base path for IonicWebViewEngine", e);
+                webView.loadUrlIntoView(FILE_PREFIX + external, false);
             }
-            webView.loadUrlIntoView("http://localhost" + indexPage, false);
         } else {
             webView.loadUrlIntoView(FILE_PREFIX + external, false);
         }
@@ -666,7 +674,13 @@ public class HotCodePushPlugin extends CordovaPlugin {
         String url = parser.getLaunchUrl();
 
         startingPage = url.replace(LOCAL_ASSETS_FOLDER, "");
-        startingPage = startingPage.replace(LOCAL_SERVER, "");
+        startingPage = startingPage.replace(LOCAL_SERVER_HTTPS, "");
+        startingPage = startingPage.replace(LOCAL_SERVER_HTTP, "");
+        // Custom Ionic / Cordova schemes, e.g. ionic://localhost or app://localhost
+        startingPage = startingPage.replaceFirst("^[a-zA-Z][a-zA-Z0-9+.-]*://localhost", "");
+        if (TextUtils.isEmpty(startingPage) || "/".equals(startingPage)) {
+            startingPage = "/index.html";
+        }
 
         return startingPage;
     }

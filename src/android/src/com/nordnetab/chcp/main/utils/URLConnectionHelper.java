@@ -12,11 +12,10 @@ import java.util.Map;
  */
 public class URLConnectionHelper {
 
-    // connection timeout in milliseconds
-    private static final int CONNECTION_TIMEOUT = 30000;
+    // Larger timeouts: Appery updates often contain 1000+ files over mobile networks
+    private static final int CONNECTION_TIMEOUT = 60000;
 
-    // data read timeout in milliseconds
-    private static final int READ_TIMEOUT = 30000;
+    private static final int READ_TIMEOUT = 120000;
 
     /**
      * Create URLConnection instance.

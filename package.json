@@ -1,7 +1,7 @@
 {
   "name": "cordova-hot-code-push-plugin",
-  "version": "1.6.10",
-  "description": "Cordova plugin to perform code updates on the fly",
+  "version": "1.6.11",
+  "description": "Cordova plugin to perform code updates on the fly (Appery fork with reliability fixes)",
   "cordova": {
     "id": "cordova-hot-code-push-plugin",
     "platforms": [

@@ -17,6 +17,22 @@
 
 #pragma mark Public API
 
++ (BOOL)isNativeBridgeFile:(NSString *)fileName {
+    if (fileName.length == 0) {
+        return NO;
+    }
+    if ([fileName isEqualToString:@"cordova.js"] || [fileName isEqualToString:@"cordova_plugins.js"]) {
+        return YES;
+    }
+    if ([fileName hasPrefix:@"plugins/"]) {
+        return YES;
+    }
+    if ([fileName hasPrefix:@"cordova."] && [fileName hasSuffix:@".js"] && [fileName rangeOfString:@"/"].location == NSNotFound) {
+        return YES;
+    }
+    return NO;
+}
+
 - (HCPManifestDiff *)calculateDifference:(HCPContentManifest *)comparedManifest {
     NSMutableArray *addedFiles = [[NSMutableArray alloc] init];
     NSMutableArray *changedFiles = [[NSMutableArray alloc] init];
@@ -24,11 +40,15 @@
 
     // find deleted and updated files
     for (HCPManifestFile *oldFile in self.files) {
+        if ([HCPContentManifest isNativeBridgeFile:oldFile.name]) {
+            // Keep native bridge from the installed app (Appery manifests overwrite cordova_plugins.js)
+            continue;
+        }
         BOOL isDeleted = YES;
         for (HCPManifestFile *newFile in comparedManifest.files) {
             if ([oldFile.name isEqualToString:newFile.name]) {
                 isDeleted = NO;
-                if (![newFile.md5Hash isEqualToString:oldFile.md5Hash]) {
+                if (![newFile.md5Hash isEqualToString:oldFile.md5Hash] && ![HCPContentManifest isNativeBridgeFile:newFile.name]) {
                     [changedFiles addObject:newFile];
                 }
             }
@@ -40,6 +60,9 @@
     
     // find new files
     for (HCPManifestFile *newFile in comparedManifest.files) {
+        if ([HCPContentManifest isNativeBridgeFile:newFile.name]) {
+            continue;
+        }
         BOOL isFound = NO;
         for (HCPManifestFile *oldFile in self.files) {
             if ([newFile.name isEqualToString:oldFile.name]) {

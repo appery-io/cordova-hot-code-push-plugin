@@ -106,6 +106,9 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
         _pluginInternalPrefs.currentReleaseVersionName = config.contentConfig.releaseVersion;
         
         [_pluginInternalPrefs saveToUserDefaults];
+        // After a native binary update, rebuild file structure for the new bundled release
+        // so assets are not copied into the previous HCP release folder (amosbaby fix).
+        _filesStructure = [[HCPFilesStructure alloc] initWithReleaseVersion:_pluginInternalPrefs.currentReleaseVersionName];
     }
     
     [HCPAssetsFolderHelper installWwwFolderToExternalStorageFolder:_filesStructure.wwwFolder];

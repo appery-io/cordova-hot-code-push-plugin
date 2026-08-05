@@ -16,30 +16,25 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.URL;
+import java.net.HttpURLConnection;
 import java.net.URLConnection;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Created by Nikolay Demyankov on 22.07.15.
- * <p/>
- * Helper class to download files.
+ * Helper class to download files with retries.
+ * Large Appery manifests (1000+ files) often fail intermittently without retries.
  */
 public class FileDownloader {
 
+    private static final int MAX_RETRIES = 3;
+    private static final long RETRY_DELAY_MS = 500;
+
     /**
      * Download list of files.
-     * Full url to the file is constructed from the contentFolderUrl and ManifestFile#hash (relative path).
-     * For each downloaded file we perform check of his hash. If it is different from the one, that provided
-     * if ManifestFile#hash - exception will be thrown.
-     * Download stops on any error.
-     *
-     * @param downloadFolder   absolute path to the folder, where downloaded files should be placed
-     * @param contentFolderUrl root url on the server, where all files are located
-     * @param files            list of files to download
-     * @throws Exception
-     * @see ManifestFile
+     * Full url to the file is constructed from the contentFolderUrl and ManifestFile name.
+     * For each downloaded file we check its hash against ManifestFile#hash.
+     * Download stops on any error after retries are exhausted.
      */
     public static void downloadFiles(final String downloadFolder,
                                      final String contentFolderUrl,
@@ -48,17 +43,36 @@ public class FileDownloader {
         for (ManifestFile file : files) {
             String fileUrl = URLUtility.construct(contentFolderUrl, file.name);
             String filePath = Paths.get(downloadFolder, file.name);
-            download(fileUrl, filePath, file.hash, requestHeaders);
+            downloadWithRetry(fileUrl, filePath, file.hash, requestHeaders);
         }
+    }
+
+    private static void downloadWithRetry(final String urlFrom,
+                                          final String filePath,
+                                          final String checkSum,
+                                          final Map<String, String> requestHeaders) throws Exception {
+        Exception lastError = null;
+        for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                download(urlFrom, filePath, checkSum, requestHeaders);
+                return;
+            } catch (Exception e) {
+                lastError = e;
+                Log.w("CHCP", "Download attempt " + attempt + "/" + MAX_RETRIES + " failed for " + urlFrom + ": " + e.getMessage());
+                try {
+                    FilesUtility.delete(new File(filePath));
+                } catch (Exception ignored) {
+                }
+                if (attempt < MAX_RETRIES) {
+                    Thread.sleep(RETRY_DELAY_MS * attempt);
+                }
+            }
+        }
+        throw lastError;
     }
 
     /**
      * Download file from server, save it on the disk and check his hash.
-     *
-     * @param urlFrom  url to download from
-     * @param filePath where to save file
-     * @param checkSum checksum of the file
-     * @throws IOException
      */
     public static void download(final String urlFrom,
                                 final String filePath,
@@ -71,21 +85,37 @@ public class FileDownloader {
         FilesUtility.delete(downloadFile);
         FilesUtility.ensureDirectoryExists(downloadFile.getParentFile());
 
-        // download file
         final URLConnection connection = URLConnectionHelper.createConnectionToURL(urlFrom, requestHeaders);
+        if (connection instanceof HttpURLConnection) {
+            final HttpURLConnection http = (HttpURLConnection) connection;
+            http.setInstanceFollowRedirects(true);
+            final int code = http.getResponseCode();
+            if (code < 200 || code >= 300) {
+                throw new IOException("Failed to download file " + urlFrom + ": HTTP " + code);
+            }
+        }
+
         final InputStream input = new BufferedInputStream(connection.getInputStream());
         final OutputStream output = new BufferedOutputStream(new FileOutputStream(filePath, false));
 
-        final byte data[] = new byte[1024];
-        int count;
-        while ((count = input.read(data)) != -1) {
-            output.write(data, 0, count);
-            md5.write(data, count);
+        try {
+            final byte data[] = new byte[8192];
+            int count;
+            while ((count = input.read(data)) != -1) {
+                output.write(data, 0, count);
+                md5.write(data, count);
+            }
+            output.flush();
+        } finally {
+            try {
+                output.close();
+            } catch (Exception ignored) {
+            }
+            try {
+                input.close();
+            } catch (Exception ignored) {
+            }
         }
-
-        output.flush();
-        output.close();
-        input.close();
 
         final String downloadedFileHash = md5.calculateHash();
         if (!downloadedFileHash.equals(checkSum)) {

@@ -83,8 +83,9 @@
             return;
         }
         
-        // check if new version is available
-        if ([newAppConfig.contentConfig.releaseVersion compare:_oldAppConfig.contentConfig.releaseVersion options:NSNumericSearch] == NSOrderedAscending) {
+        // check if new version is available (skip equal OR older)
+        NSComparisonResult cmp = [newAppConfig.contentConfig.releaseVersion compare:_oldAppConfig.contentConfig.releaseVersion options:NSNumericSearch];
+        if (cmp == NSOrderedAscending || cmp == NSOrderedSame) {
             [self notifyNothingToUpdate:newAppConfig];
             return;
         }

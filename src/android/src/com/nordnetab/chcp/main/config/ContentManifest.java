@@ -101,6 +101,30 @@ public class ContentManifest {
     }
 
     /**
+     * Files that must stay from the native app install.
+     * Appery server manifests include cordova_plugins.js / cordova.js / plugins/*
+     * from the published web project, which would wipe Hot Code Push (and other
+     * native-only plugins) from the JS bridge after the first update — breaking
+     * subsequent fetchUpdate() calls.
+     */
+    public static boolean isNativeBridgeFile(String fileName) {
+        if (fileName == null) {
+            return false;
+        }
+        if ("cordova.js".equals(fileName) || "cordova_plugins.js".equals(fileName)) {
+            return true;
+        }
+        if (fileName.startsWith("plugins/") || fileName.startsWith("plugins\\")) {
+            return true;
+        }
+        // Hashed cordova bundles published by Appery (cordova.<hash>.js)
+        if (fileName.startsWith("cordova.") && fileName.endsWith(".js") && !fileName.contains("/")) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Find differences between this manifest and the new one.
      * Current object is considered as an old manifest.
      *
@@ -123,11 +147,15 @@ public class ContentManifest {
 
         // find deleted and updated files
         for (ManifestFile oldFile : oldManifestFiles) {
+            if (isNativeBridgeFile(oldFile.name)) {
+                // Keep native bridge files from the installed app; never delete them via update
+                continue;
+            }
             boolean isDeleted = true;
             for (ManifestFile newFile : newManifestFiles) {
                 if (oldFile.name.equals(newFile.name)) {
                     isDeleted = false;
-                    if (!newFile.hash.equals(oldFile.hash)) {
+                    if (!newFile.hash.equals(oldFile.hash) && !isNativeBridgeFile(newFile.name)) {
                         changedFiles.add(newFile);
                     }
 
@@ -141,6 +169,9 @@ public class ContentManifest {
 
         // find new files
         for (ManifestFile newFile : newManifestFiles) {
+            if (isNativeBridgeFile(newFile.name)) {
+                continue;
+            }
             boolean isFound = false;
             for (ManifestFile oldFile : oldManifestFiles) {
                 if (newFile.name.equals(oldFile.name)) {

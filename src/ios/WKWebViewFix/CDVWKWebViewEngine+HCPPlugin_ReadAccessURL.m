@@ -56,6 +56,17 @@
     if ([self canLoadRequest:request]) { // can load, differentiate between file urls and other schemes
         if (request.URL.fileURL) {
             NSObject *handler = [[((WKWebView*)self.engineWebView) configuration] urlSchemeHandlerForURLScheme:@"ionic"];
+            if (!handler) {
+                // Prefer preference-configured scheme (iosScheme / scheme), default ionic
+                NSString *scheme = @"ionic";
+                @try {
+                    NSString *local = [self performSelector:@selector(CDV_LOCAL_SERVER)];
+                    if ([local containsString:@"://"]) {
+                        scheme = [local componentsSeparatedByString:@"://"].firstObject;
+                    }
+                } @catch (NSException *e) {}
+                handler = [[((WKWebView*)self.engineWebView) configuration] urlSchemeHandlerForURLScheme:scheme];
+            }
             if (handler) {
                 NSURL* startURL = [NSURL URLWithString:((CDVViewController *)self.viewController).startPage];
 

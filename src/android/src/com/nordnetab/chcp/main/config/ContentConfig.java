@@ -37,7 +37,12 @@ public class ContentConfig {
             }
 
             if (node.has(JsonKeys.CONTENT_URL)) {
-                config.setContentUrl(node.get(JsonKeys.CONTENT_URL).asText());
+                String contentUrl = node.get(JsonKeys.CONTENT_URL).asText();
+                // Appery content_url often has no trailing slash; keep URLUtility.construct happy
+                if (contentUrl != null && contentUrl.length() > 0 && !contentUrl.endsWith("/")) {
+                    contentUrl = contentUrl + "/";
+                }
+                config.setContentUrl(contentUrl);
             }
 
             // minimum native version
