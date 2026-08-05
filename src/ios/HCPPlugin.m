@@ -249,31 +249,44 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
  */
 - (void)loadURL:(NSString *)url {
     [[NSOperationQueue mainQueue] addOperationWithBlock:^{
-        NSString *wwwPath = _filesStructure.wwwFolder.path;
+        NSString *wwwPath = self->_filesStructure.wwwFolder.path;
+        NSString *wwwAbsolute = self->_filesStructure.wwwFolder.absoluteString;
         // Rewrite Cordova starting page location for subsequent navigations
         if ([self.viewController isKindOfClass:[CDVViewController class]]) {
-            ((CDVViewController *)self.viewController).wwwFolderName = _filesStructure.wwwFolder.absoluteString;
+            CDVViewController *vc = (CDVViewController *)self.viewController;
+            if ([vc respondsToSelector:@selector(setWebContentFolderName:)]) {
+                [vc setValue:wwwAbsolute forKey:@"webContentFolderName"];
+            } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                vc.wwwFolderName = wwwAbsolute;
+#pragma clang diagnostic pop
+            }
         }
 
         // Prefer Ionic WebView setServerBasePath semantics: asset root = www, load scheme://localhost/
-        id engine = self.webViewEngine;
+        id<CDVWebViewEngineProtocol> engine = self.webViewEngine;
         BOOL redirected = NO;
         if (engine) {
             @try {
-                [engine setValue:wwwPath forKey:@"basePath"];
+                [(NSObject *)engine setValue:wwwPath forKey:@"basePath"];
             } @catch (NSException *e) {}
 
             id handler = nil;
             @try {
-                handler = [engine valueForKey:@"handler"];
+                handler = [(NSObject *)engine valueForKey:@"handler"];
             } @catch (NSException *e) {}
-            if (handler && [handler respondsToSelector:@selector(setAssetPath:)]) {
-                [handler performSelector:@selector(setAssetPath:) withObject:wwwPath];
+            SEL setAssetPathSel = NSSelectorFromString(@"setAssetPath:");
+            if (handler && [handler respondsToSelector:setAssetPathSel]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+                [handler performSelector:setAssetPathSel withObject:wwwPath];
+#pragma clang diagnostic pop
             }
 
             NSString *localServer = nil;
             @try {
-                localServer = [engine valueForKey:@"CDV_LOCAL_SERVER"];
+                localServer = [(NSObject *)engine valueForKey:@"CDV_LOCAL_SERVER"];
             } @catch (NSException *e) {}
             if (localServer.length > 0) {
                 NSURLRequest *request = [NSURLRequest requestWithURL:[NSURL URLWithString:localServer]
@@ -289,7 +302,7 @@ static NSString *const DEFAULT_STARTING_PAGE = @"index.html";
         }
 
         if (!redirected) {
-            NSURL *loadURL = [NSURL URLWithString:[NSString stringWithFormat:@"%@/%@", _filesStructure.wwwFolder.absoluteString, url]];
+            NSURL *loadURL = [NSURL URLWithString:[NSString stringWithFormat:@"%@/%@", wwwAbsolute, url]];
             NSURLRequest *request = [NSURLRequest requestWithURL:loadURL
                                                      cachePolicy:NSURLRequestReloadIgnoringCacheData
                                                  timeoutInterval:10000];
